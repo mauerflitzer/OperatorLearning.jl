@@ -61,8 +61,8 @@ ytest = vars["u"][end-batch_size:end, 1:subsample:end] |> device;
 # `collect` converts data type `range` into an array
 # vcat stacks the 2 grid vectors
 sensor_count = 64
-x_grid = collect(range(0, 1, length=sensor_count))'
-t_grid = ones(1,sensor_count)
+x_grid = collect(range(0, 1, length=sensor_count))'  |> device;
+t_grid = ones(1,sensor_count)  |> device;
 grid = vcat(x_grid, t_grid) |> device
 # Create the DeepONet:
 # IC is given on grid of 1024 points, and we solve for a fixed time t in one
@@ -100,13 +100,18 @@ function loss_neu(xtrain, x_sensor, t_sensor, ytrain)
             push!(f_xx_diag,diaghessian(x_sensor->modell_call(xtrain, x_sensor, t_grid)[i], x_grid)[1][i])
         end
     end
+    #Reshape to batch_size x length of diagional = sensor_count
     f_xx_diag = reshape(f_xx_diag,(batch_size, sensor_count))
-    f_t = mapslices(diag, f_t, dims=[2,3])
-    f_x = mapslices(diag, f_x, dims=[2,3])
+    #Form a matrix out of the vectors
+    f_xx_diag = reshape(cat(diagm.(eachslice(f_xx_diag, dims=1))..., dims=1), (10, 64, 64)) |> device
     #print("After: $(Dates.format(now(), "HH:MM:SS"))\n")
-    @ein out[batch, x] := f[batch, x] * f_x[batch, x, 1]
-    out = out + f_t - f_xx_diag
-    return 20* Flux.Losses.mse(zeros(batch_size, sensor_count), out) + Flux.Losses.mse(model(xtrain, sensor), ytrain)
+    
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    #TODO not done here, error, failure
+    @ein out[batch, x, y] := f[batch, x] * f_x[batch, x, y]
+    out = out + f_t - f_xx_diag |> device;
+    comp = zeros(batch_size, sensor_count, sensor_count) |> device
+    return 20* Flux.Losses.mse(comp, out) + Flux.Losses.mse(model(xtrain, sensor), ytrain)
 end
 
 
